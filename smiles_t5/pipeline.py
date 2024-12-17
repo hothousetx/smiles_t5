@@ -2,8 +2,6 @@ import transformers
 import torch
 from typing import Dict, OrderedDict
 
-import transformers.modeling_outputs
-
 class T5Seq2SeqPipeline(transformers.Text2TextGenerationPipeline):
     def __init__(self, *args, **kwargs):
         super(T5Seq2SeqPipeline, self).__init__(*args, **kwargs)

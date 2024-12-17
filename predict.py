@@ -60,7 +60,7 @@ def main():
     df[pipeline.labels] = predictions
 
     if not args.output_file:
-        args.output_file = Path(f"{args.dataset.stem}_predictions.csv")
+        args.output_file = Path(args.dataset.parent, f"{args.dataset.stem}_predictions.csv")
     df.to_csv(args.output_file, index=False)
 
 
