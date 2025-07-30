@@ -1,4 +1,10 @@
-# SmilesT5
+# SmilesT5: Domain-specific pretraining for molecular language models
+
+This repository contains scripts for fine-tuning and inference of the SmilesT5 model, a transformer-based approach for learning molecular properties from SMILES representations. SmilesT5 is introduced in our paper:
+
+**[SmilesT5: Domain-specific pretraining for molecular language models](#)**
+
+> Molecular property prediction is an increasingly critical task within drug discovery and development. Typically, neural networks can learn molecular properties using graph-based, language-based or feature-based methods. Recent advances in natural language processing have highlighted the capabilities of neural networks to learn complex human language using masked language modelling. These approaches to training large transformer-based deep learning models have also been used to learn the language of molecules, as represented by simplified molecular-input line-entry system (SMILES) strings. Here, we present novel domain-specific text-to-text pretraining tasks that yield improved performance in six classification-based molecular property prediction benchmarks, relative to both traditional likelihood-based training and previously proposed fine-tuning tasks. Through ablation studies, we show that data and computational efficiency can be improved by using these domain-specific pretraining tasks. Finally, the pretrained embeddings from the model can be used as fixed inputs into a downstream machine learning classifier and yield comparable performance to finetuning but with much lower computational overhead.
 
 ## Environment
 
