@@ -1,13 +1,14 @@
 import torch
 import numpy as np
-import pandas as pd
-from pathlib import Path
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 from rdkit.Chem.Scaffolds import MurckoScaffold
 from collections import defaultdict
 from rdkit import Chem
 from rdkit.Chem.SaltRemover import SaltRemover
-from datasets import DatasetDict, Dataset, load_from_disk
+from datasets import DatasetDict, Dataset, load_from_disk 
+from functools import partial
+import pandas as pd
+from pathlib import Path
 
 SALT_REMOVER = SaltRemover()
 
@@ -38,20 +39,21 @@ def clean_smiles(smiles: str) -> str:
     raise TypeError(f"{smiles} is not a valid SMILES string, it doesn't produce a valid mol.")
     
 
-def scaffold_split_dataset(dataset: Dataset, smiles_col: str, fractions: Tuple[float] =(0.8, 0.1, 0.1)):
+def generate_scaffolds(data, smiles_col):
+    data['scaffolds'] = [
+        MurckoScaffold.MurckoScaffoldSmilesFromSmiles(s, includeChirality=True) 
+        for s in data[smiles_col]
+    ]
+    return data
+
+def scaffold_split_dataset(dataset: Dataset, smiles_col: str, fractions: Tuple[float, float, float] = (0.8, 0.1, 0.1)) -> DatasetDict:
     rng = np.random.default_rng(0)
     fractions_lens = []
     for f in fractions:
         fractions_lens.append(np.floor(len(dataset) * f))
 
-    def generate_scaffolds(data):
-        data['scaffolds'] = [
-            MurckoScaffold.MurckoScaffoldSmilesFromSmiles(s, includeChirality=True) 
-            for s in data[smiles_col]
-        ]
-        return data
-    
-    dataset = dataset.map(generate_scaffolds, batched=True, num_proc=1)
+    generate_scaffs = partial(generate_scaffolds, smiles_col=smiles_col) 
+    dataset = dataset.map(generate_scaffs, batched=True, num_proc=1)
     scaffolds_dict = defaultdict(list)
     for idx, scaff in enumerate(dataset['scaffolds']):
         scaffolds_dict[scaff].append(idx)
@@ -69,49 +71,49 @@ def scaffold_split_dataset(dataset: Dataset, smiles_col: str, fractions: Tuple[f
                 break
 
     split_dataset = DatasetDict({
-        'train': dataset.select(k_bins[0]),
-        'val': dataset.select(k_bins[1]),
-        'test': dataset.select(k_bins[2])
+        'train': dataset.select(bin_idx[0]),
+        'val': dataset.select(bin_idx[1]),
+        'test': dataset.select(bin_idx[2])
     })
     return split_dataset
 
-def load_dataset(dataset_path: Path, val_path: Path, test_path: Path, smiles_col: str, splitting_method: str, clean=False):
+def load_dataset(dataset_path: Path, smiles_col: str, splitting_method: str, clean: bool = False, test_path: Optional[Path] = None, val_path: Optional[Path] = None) -> DatasetDict:
     if dataset_path.is_dir():
-        dataset = load_from_disk(dataset_path)
+       dataset = load_from_disk(dataset_path)
     elif dataset_path.suffix == ".csv":
-        if val_path and test_path:
-            train_df = pd.read_csv(dataset_path)
-            val_df = pd.read_csv(val_path)
-            test_df = pd.read_csv(test_path)
-            dataset = DatasetDict({
-                "train": Dataset.from_pandas(train_df),
-                "val": Dataset.from_pandas(val_df),
-                "test": Dataset.from_pandas(test_df),
-            })
-        else:
-            df = pd.read_csv(dataset_path)
-            dataset = Dataset.from_pandas(df)
+       if val_path and test_path:
+           train_df = pd.read_csv(dataset_path)
+           val_df = pd.read_csv(val_path)
+           test_df = pd.read_csv(test_path)
+           dataset = DatasetDict({
+               "train": Dataset.from_pandas(train_df),
+               "val": Dataset.from_pandas(val_df),
+               "test": Dataset.from_pandas(test_df),
+           })
+       else:
+           df = pd.read_csv(dataset_path)
+           dataset = Dataset.from_pandas(df)
     if clean:
-        dataset = dataset.map(
-            lambda example: {smiles_col: clean_smiles(example[smiles_col])},
-            batched=False,
-            num_proc=1
-        )
-    if type(dataset) == Dataset:
-        if splitting_method == "scaffold":
-            dataset = scaffold_split_dataset(
-                dataset=dataset,
-                smiles_col=smiles_col,
-            )
-        else:  # random split
-            dataset_train_test = dataset.train_test_split(test_size=0.2)
-            dataset_train = dataset_train_test["train"]
-            dataset_val_test = dataset_train_test["test"].train_test_split(
-                test_size=0.5
-            )
-            dataset = DatasetDict({
-                "train": dataset_train,
-                "val": dataset_val_test["train"],
-                "test": dataset_val_test["test"],
-            })
+       dataset = dataset.map(
+           lambda example: {smiles_col: clean_smiles(example[smiles_col])},
+           batched=False,
+           num_proc=1
+       )
+    if type(dataset) is Dataset:
+       if splitting_method == "scaffold":
+           dataset = scaffold_split_dataset(
+               dataset=dataset,
+               smiles_col=smiles_col,
+           )
+       else:  # random split
+           dataset_train_test = dataset.train_test_split(test_size=0.2)
+           dataset_train = dataset_train_test["train"]
+           dataset_val_test = dataset_train_test["test"].train_test_split(
+               test_size=0.5
+           )
+           dataset = DatasetDict({
+               "train": dataset_train,
+               "val": dataset_val_test["train"],
+               "test": dataset_val_test["test"],
+           })
     return dataset
