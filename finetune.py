@@ -38,7 +38,7 @@ def main():
     )
     parser.add_argument(
         "--pretrained_model",
-        default="hhtx/smiles_t5",
+        default="hothousetx/smiles_t5",
         required=True,
         type=str,
         help="the name of the model to load",

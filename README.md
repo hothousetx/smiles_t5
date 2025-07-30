@@ -34,7 +34,7 @@ python finetune.py \
 | --val_dataset |  | string |  optional path to the validation datatset, if not given, the dataset will be split according to --split_method |
 | --test_dataset |  | string |  optional path to the test datatset, if not given, the dataset will be split according to --split_method |
 | --clean | false | string | whether or not to clean the SMILES strings before training. This will remove salts and canonicalise them. |
-| --pretrained_model | hhtx/smiles_t5 | string |  the name (or path if stored locally) of the model to load |
+| --pretrained_model | hothousetx/smiles_t5 | string |  the name (or path if stored locally) of the model to load |
 | --output_dir |  | string |  the path that you want to save the new model & final test metrics in |
 | --split_method | scaffold | string |  how to split the data if --val_dataset and --test_dataset not given, this can be scaffold or random splitting. **Allowed values: scaffold, random** |
 | --fit_metrics | loss | str | the metric that the early stopping callback will monitor to stop training early |
@@ -83,7 +83,7 @@ python extract_embeddings.py \
 
 | argument | default | type | description |
 |----------|---------|------|-------------|
-| --pretrained_model | hhtx/smiles_t5 | string |  the name (or path if stored locally) of the model to load |
+| --pretrained_model | hothousetx/smiles_t5 | string |  the name (or path if stored locally) of the model to load |
 | --dataset |  | string | The path to the dataset that will be used to train the model. This can be either a .csv file or a huggingface dataset/datasetdict directory |
 | --smiles_col | smiles | str | column in the dataset that contains the SMILES strings |
 | --batch_size | 8 | int |  indicate the batch size per device (for both train & eval) |
