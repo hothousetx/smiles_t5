@@ -4,6 +4,7 @@ from pathlib import Path
 import argparse
 from tqdm import tqdm
 import smiles_t5
+from torch.utils.data import DataLoader
 
 
 def main():
@@ -20,6 +21,12 @@ def main():
         type=Path,
         required=True,
         help="the path that you want to load the model & tokenizer from",
+    )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=1,
+        help="the batch size for inference"
     )
     parser.add_argument(
         "--smiles_col",
@@ -41,10 +48,10 @@ def main():
     args = parser.parse_args()
     print(args)
 
-    model = transformers.T5ForConditionalGeneration.from_pretrained(args.model_dir)
-    tokenizer = transformers.AutoTokenizer.from_pretrained(args.model_dir)
+    # model = transformers.T5ForConditionalGeneration.from_pretrained(args.model_dir)
+    # tokenizer = transformers.AutoTokenizer.from_pretrained(args.model_dir)
 
-    pipeline = smiles_t5.pipeline.T5Seq2SeqPipeline(model=model, tokenizer=tokenizer)
+    pipeline = smiles_t5.pipeline.T5Seq2SeqPipeline(args.model_dir)
 
     df = pd.read_csv(args.dataset)
     df.dropna(subset=[args.smiles_col], inplace=True)
@@ -53,9 +60,14 @@ def main():
         df[args.smiles_col].to_list(), clean=args.clean
     )
 
+    dataloader = DataLoader(dataset, batch_size=args.batch_size)
+
     predictions = []
-    for preds in tqdm(pipeline(dataset, batch_size=1), desc="Generating predictions", total=len(dataset)):
-        predictions.append(list(preds.values()))
+    pbar = tqdm(dataloader, desc="Generating predictions", total=len(dataloader))
+
+    for smiles in pbar:
+        outputs = pipeline(smiles)
+        predictions.extend([list(i.values()) for i in outputs])
 
     df[pipeline.labels] = predictions
 
