@@ -60,7 +60,8 @@ python predict.py \
     --model_dir path/to/finetuned/model \
     --dataset path/to/dataset.csv \
     --output_file path/to/outputs.csv \
-    --smiles_col "smiles"
+    --smiles_col "smiles" \
+    --batch_size 8
 ```
 
 | argument | default | type | description |
@@ -68,6 +69,7 @@ python predict.py \
 | --dataset |  | string | The path to the dataset that will be used to train the model. This can be either a .csv file or a huggingface dataset/datasetdict directory |
 | --model_dir | | str | the path to the finetuned model & tokenizer |
 | --smiles_col | smiles | str | column in the dataset that contains the SMILES strings |
+| --batch_size | 1 | int | the batch size used for inference |
 | --clean | false | bool | whether to clean the smiles strings before generating predictions |
 | --output_file |  | str | the CSV file to save the data in, if not given, it will be in the current directory |
 
