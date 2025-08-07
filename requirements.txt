@@ -9,6 +9,7 @@ click==8.2.1
 contourpy==1.3.2
 cycler==0.12.1
 datasets==2.17.1
+debugpy==1.8.16
 dill==0.3.8
 filelock==3.13.1
 fonttools==4.57.0
@@ -17,10 +18,10 @@ fsspec==2023.10.0
 huggingface-hub==0.21.1
 idna==3.6
 ipywidgets==8.1.6
-Jinja2==3.1.3
-jupyterlab_widgets==3.0.14
+jinja2==3.1.3
+jupyterlab-widgets==3.0.14
 kiwisolver==1.4.8
-MarkupSafe==2.1.5
+markupsafe==2.1.5
 matplotlib==3.10.1
 mpmath==1.3.0
 multidict==6.0.5
@@ -35,11 +36,12 @@ pyarrow-hotfix==0.6
 pyparsing==3.2.3
 python-dateutil==2.8.2
 pytz==2024.1
-PyYAML==6.0.1
+pyyaml==6.0.1
 rdkit==2022.9.5
 regex==2023.12.25
 requests==2.31.0
 safetensors==0.4.2
+six==1.17.0
 sympy==1.12
 tokenizers==0.15.2
 torch==2.2.1
@@ -48,7 +50,7 @@ torcheval==0.0.7
 torchvision==0.17.1
 tqdm==4.66.2
 transformers==4.38.1
-typing_extensions==4.10.0
+typing-extensions==4.10.0
 tzdata==2024.1
 urllib3==2.2.1
 widgetsnbextension==4.0.14
