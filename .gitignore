@@ -165,3 +165,4 @@ data/
 .history/**
 .vscode/**
 **/.DS_Store
+notebooks/

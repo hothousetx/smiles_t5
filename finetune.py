@@ -1,35 +1,63 @@
+"""Fine-tuning script for T5 models on molecular property prediction tasks.
+
+This script provides a command-line interface for fine-tuning pretrained T5 models
+(e.g., SmilesT5) on multi-label classification tasks using SMILES representations.
+It supports scaffold and random data splitting, early stopping, and various
+evaluation metrics.
+
+The fine-tuned model and tokenizer are saved to the output directory along with
+test predictions and metrics.
+
+Example usage:
+    python finetune.py \\
+        --dataset molecules.csv \\
+        --output_dir ./output \\
+        --split_method scaffold \\
+        --label_col labels \\
+        --eval_metrics roc_auc f1 \\
+        --fit_metric roc_auc \\
+        --greater_is_better
+"""
+
 import random
 from pathlib import Path
+from typing import List, cast
+
+import click
 import numpy as np
 import torch
-import transformers
 from rdkit import RDLogger
-import smiles_t5
-import click
-from typing import List
+from transformers import AutoTokenizer, T5ForConditionalGeneration
+from transformers.data.data_collator import DataCollatorForSeq2Seq
+from transformers.trainer_callback import EarlyStoppingCallback
+from transformers.trainer_seq2seq import Seq2SeqTrainer
+from transformers.training_args_seq2seq import Seq2SeqTrainingArguments
 
-RDLogger.DisableLog("rdApp.*")
+import smiles_t5
+
+RDLogger.DisableLog("rdApp.*")  # type: ignore[attr-defined]
+
 
 @click.command()
 @click.option(
     "--dataset",
     type=Path,
     required=True,
-    envvar='DATASET',
+    envvar="DATASET",
     help="the path to the dataset that will be used to train the model",
 )
 @click.option(
     "--val_dataset",
     type=Path,
     default=None,
-    envvar='VAL_DATASET',
+    envvar="VAL_DATASET",
     help="optional path to the validation datatset, if not given, the dataset will be split according to --split_method",
 )
 @click.option(
     "--test_dataset",
     type=Path,
     default=None,
-    envvar='TEST_DATASET',
+    envvar="TEST_DATASET",
     help="optional path to the test datatset, if not given, the dataset will be split according to --split_method",
 )
 @click.option(
@@ -48,88 +76,99 @@ RDLogger.DisableLog("rdApp.*")
     "--output_dir",
     type=Path,
     default=Path().cwd() / "output",
-    envvar='OUTPUT_DIR',
+    envvar="OUTPUT_DIR",
     help="the path that you want to save the new model & checkpoints in",
 )
 @click.option(
     "--split_method",
     default="scaffold",
     type=click.Choice(["random", "scaffold"]),
-    envvar='SPLIT_METHOD',
+    envvar="SPLIT_METHOD",
     help="how to split the data if --val_dataset and --test_dataset not given",
 )
 @click.option(
     "--fit_metric",
     type=str,
     default="loss",
-    envvar='FIT_METRIC',
+    envvar="FIT_METRIC",
     help="the metric that the early stopping callback will monitor to stop training early",
 )
 @click.option(
     "--greater_is_better",
     is_flag=True,
-    envvar='GREATER_IS_BETTER',
+    envvar="GREATER_IS_BETTER",
     help="whether a higher or lower number is desired from the val_metric",
 )
 @click.option(
     "--learning_rate",
     type=float,
     default=1e-6,
-    envvar='LEARNING_RATE',
+    envvar="LEARNING_RATE",
     help="the learning rate to apply to the optimizer",
 )
 @click.option(
     "--epochs",
     type=int,
     default=100,
-    envvar='EPOCHS',
+    envvar="EPOCHS",
     help="number of epochs to train the model for",
 )
 @click.option(
     "--patience",
     type=int,
     default=10,
-    envvar='PATIENCE',
+    envvar="PATIENCE",
     help="number of epochs to monitor early stopping for",
 )
 @click.option(
     "--weight_decay",
     type=float,
     default=1e-2,
-    envvar='WEIGHT_DECAY',
+    envvar="WEIGHT_DECAY",
     help="the weight decay to apply to the optimizer",
 )
 @click.option(
     "--batch_size",
     type=int,
     default=8,
-    envvar='BATCH_SIZE',
+    envvar="BATCH_SIZE",
     help="indicate the batch size per device (for both train & eval)",
 )
 @click.option(
     "--smiles_col",
     type=str,
     default="smiles",
-    envvar='SMILES_COL',
+    envvar="SMILES_COL",
     help="column in the dataset that contains the SMILES strings",
 )
 @click.option(
     "--label_col",
     type=str,
     default="labels",
-    envvar='LABEL_COL',
+    envvar="LABEL_COL",
     help="the column of the csv that contains the labels",
 )
 @click.option(
     "--tf32",
     is_flag=True,
-    envvar='TF32',
+    envvar="TF32",
     help="whether to use tf32 during finetuning",
 )
 @click.option(
     "--eval_metrics",
     multiple=True,
-    type=click.Choice([
+    type=click.Choice(
+        [
+            "roc_auc",
+            "prc_auc",
+            "f1",
+            "precision",
+            "recall",
+            "accuracy",
+            "hamming_accuracy",
+        ]
+    ),
+    default=[
         "roc_auc",
         "prc_auc",
         "f1",
@@ -137,24 +176,19 @@ RDLogger.DisableLog("rdApp.*")
         "recall",
         "accuracy",
         "hamming_accuracy",
-    ]),
-    default=["roc_auc", "prc_auc", "f1", "precision", "recall", "accuracy", "hamming_accuracy"],
-    envvar='EVAL_METRICS',
+    ],
+    envvar="EVAL_METRICS",
     help="the metrics to report during finetuning",
 )
 @click.option(
     "--eval_acc_steps",
     type=int,
     default=None,
-    envvar='EVAL_ACC_STEPS',
+    envvar="EVAL_ACC_STEPS",
     help="the amount of steps of eval before moving data to CPU",
 )
 @click.option(
-    "--seed",
-    type=int,
-    default=0,
-    envvar='SEED',
-    help="the random seed to use"
+    "--seed", type=int, default=0, envvar="SEED", help="the random seed to use"
 )
 def main(
     dataset: Path,
@@ -177,7 +211,48 @@ def main(
     eval_metrics: List[str],
     eval_acc_steps: int,
     seed: int,
-):
+) -> None:
+    """Fine-tune a T5 model for molecular property prediction.
+
+    This function loads a pretrained T5 model, prepares the dataset with
+    appropriate tokenization, and trains the model using the HuggingFace
+    Seq2SeqTrainer. Training includes early stopping based on the specified
+    metric and saves the best model checkpoint.
+
+    After training, the function evaluates on the test set and exports
+    predictions and metrics to the output directory.
+
+    Args:
+        dataset: Path to the training dataset (CSV file or HuggingFace dataset).
+        val_dataset: Optional path to validation dataset. If None, data is split
+            according to split_method.
+        test_dataset: Optional path to test dataset. If None, data is split
+            according to split_method.
+        clean: Whether to canonicalize SMILES and remove salts before training.
+        pretrained_model: Name or path of the pretrained model to fine-tune.
+        output_dir: Directory to save the fine-tuned model, checkpoints, and results.
+        split_method: Method for splitting data ('scaffold' or 'random').
+        fit_metric: Metric to monitor for early stopping and best model selection.
+        greater_is_better: Whether higher values of fit_metric are better.
+        learning_rate: Learning rate for the AdamW optimizer.
+        epochs: Maximum number of training epochs.
+        patience: Number of epochs without improvement before early stopping.
+        weight_decay: Weight decay coefficient for regularization.
+        batch_size: Batch size per device for training and evaluation.
+        smiles_col: Column name containing SMILES strings in the dataset.
+        label_col: Column name containing space-separated labels in the dataset.
+        tf32: Whether to use TensorFloat-32 precision on supported GPUs.
+        eval_metrics: List of metrics to compute during evaluation.
+        eval_acc_steps: Steps between moving eval data to CPU (helps with OOM).
+        seed: Random seed for reproducibility.
+
+    Output files:
+        - {output_dir}/config.json: Model configuration
+        - {output_dir}/pytorch_model.bin: Model weights
+        - {output_dir}/tokenizer_config.json: Tokenizer configuration
+        - {output_dir}/test_predictions.csv: Per-sample predictions on test set
+        - {output_dir}/test_metrics.json: Aggregated test set metrics
+    """
 
     if torch.cuda.is_available():
         torch.backends.cudnn.benchmark = False
@@ -192,9 +267,7 @@ def main(
     if not output_dir.exists():
         output_dir.mkdir(parents=True, exist_ok=True)
 
-    tokenizer = transformers.AutoTokenizer.from_pretrained(
-        pretrained_model
-    )
+    tokenizer = AutoTokenizer.from_pretrained(pretrained_model)
 
     train_dataset = smiles_t5.dataset.load_dataset(
         dataset_path=dataset,
@@ -210,7 +283,7 @@ def main(
         for label in labels.split(" "):
             if label:
                 if label not in unique_labels:
-                        unique_labels.append(label)
+                    unique_labels.append(label)
     tokenizer.add_tokens(unique_labels)
 
     def tokenize(data):
@@ -225,8 +298,7 @@ def main(
         remove_columns=train_dataset["train"].column_names,
     )
 
-
-    model = transformers.T5ForConditionalGeneration.from_pretrained(
+    model = T5ForConditionalGeneration.from_pretrained(
         pretrained_model,
     )
     model.config.labels = unique_labels
@@ -235,7 +307,7 @@ def main(
         pad_to_multiple_of=32 if tf32 else None,
     )
 
-    data_collator = transformers.DataCollatorForSeq2Seq(
+    data_collator = DataCollatorForSeq2Seq(
         tokenizer=tokenizer,
         model=model,
         padding=True,
@@ -249,9 +321,9 @@ def main(
         metrics=eval_metrics,
     )
 
-    training_args = transformers.Seq2SeqTrainingArguments(
-        output_dir=output_dir,
-        evaluation_strategy="epoch",
+    training_args = Seq2SeqTrainingArguments(
+        output_dir=str(output_dir),
+        eval_strategy="epoch",
         learning_rate=learning_rate,
         lr_scheduler_type="linear",
         num_train_epochs=epochs,
@@ -269,16 +341,16 @@ def main(
         seed=seed,
         data_seed=seed,
     )
-  
-    trainer = transformers.Seq2SeqTrainer(
+
+    trainer = Seq2SeqTrainer(
         model=model,
         args=training_args,
-        train_dataset=tokenized["train"],
-        eval_dataset=tokenized["val"],
+        train_dataset=tokenized["train"],  # type: ignore[arg-type]
+        eval_dataset=tokenized["val"],  # type: ignore[arg-type]
         data_collator=data_collator,
-        compute_metrics=calc_metrics,
+        compute_metrics=calc_metrics,  # type: ignore[arg-type]
         callbacks=[
-            transformers.EarlyStoppingCallback(
+            EarlyStoppingCallback(
                 early_stopping_patience=patience,
                 early_stopping_threshold=1e-6,
             )
@@ -287,10 +359,11 @@ def main(
 
     trainer.train()
     # save model & tokenizer
-    trainer.model.save_pretrained(output_dir)
+    if trainer.model is not None:
+        trainer.model.save_pretrained(output_dir)  # type: ignore[union-attr]
     tokenizer.save_pretrained(output_dir)
     # get test data
-    predictions = trainer.predict(tokenized["test"])
+    predictions = trainer.predict(tokenized["test"])  # type: ignore[arg-type]
     print(f"Test Metric: {predictions.metrics}")
     prediction_exporter = smiles_t5.metrics.PredictionExporter(
         tokenizer=tokenizer,
@@ -299,11 +372,11 @@ def main(
     )
     prediction_exporter.export_test_predictions(
         predictions.predictions[0],
-        predictions.label_ids,
+        cast(np.ndarray, predictions.label_ids),
         tokenized["test"],
     )
     prediction_exporter.export_test_metrics(
-        predictions.metrics,
+        cast(dict, predictions.metrics),
     )
 
 
