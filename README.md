@@ -180,14 +180,14 @@ for smiles, pred in zip(smiles_list, predictions):
 If you use SmilesT5 in your research, please cite our paper:
 
 ```bibtex
-@article{smilest5,
+@article{spence2025smilest5,
   title={SmilesT5: Domain-specific pretraining for molecular language models},
-  author={...},
-  journal={...},
-  year={...}
+  author={Spence, Philip and Paige, Brooks and Osbourn, Anne},
+  journal={arXiv preprint},
+  year={2025}
 }
 ```
 
 ## License
 
-[Add license information here]
+This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
